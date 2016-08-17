@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>canvas {
+	border: 1px solid #d3d3d3;
+	background-color: #f1f1f1;
+}</style>
+</head>
+<body onload="startGame()">
+
+<script type="text/javascript">
+	var mouseCursor;
+	var cellsWidth = 64;
+	var cellsHeight = 48;
+	var cells = [];
+	var generationTimer = 0;
+	var running = true;
+	var generationLength = 5;
+
+	function startGame() {
+		myGameArea.start();
+
+		mouseCursor = new component(10, 10, "purple", 150, 150);
+
+		for(cellX = 0; cellX < cellsWidth; cellX++) {
+			for(cellY = 0; cellY < cellsHeight; cellY++) {
+				cells.push(new Cell(cellX * 10, cellY * 10, 10, 10, "green"));
+			}
+		}
+	}
+
+	var myGameArea = {
+		canvas : document.createElement("canvas"),
+		start : function() {
+
+	        this.canvas.width = 640;
+	        this.canvas.height = 480;
+	        this.canvas.style.cursor = "none"; //hide the original cursor
+			//this.canvas.style = "position:absolute; left: 50%; width: 640px; height: 480px; margin-left: -320px;";
+			this.context = this.canvas.getContext("2d");
+			document.body.insertBefore(this.canvas, document.body.childNodes[0]);
+
+			this.interval = setInterval(updateGameArea, 20);
+
+	        window.addEventListener('mousemove', function (e) {
+	            myGameArea.mousePosX = e.pageX;
+	            myGameArea.mousePosY = e.pageY;
+	        })
+
+	        window.addEventListener('touchmove', function (e) {
+	            myGameArea.touchPosX = e.touches[0].screenX;
+	            myGameArea.touchPosY = e.touches[0].screenY;
+	        })
+
+	        window.addEventListener('keydown', function (e) {
+	            myGameArea.keys = (myGameArea.keys || []);
+	            myGameArea.keys[e.keyCode] = true;
+	        })
+	        window.addEventListener('keyup', function (e) {
+	            myGameArea.keys[e.keyCode] = false; 
+	        })
+
+	        window.addEventListener('mousedown', function (e) {
+	            myGameArea.mouseDownX = e.pageX;
+	            myGameArea.mouseDownY = e.pageY;
+	        })
+	        window.addEventListener('mouseup', function (e) {
+	            myGameArea.mouseDownX = false;
+	            myGameArea.mouseDownY = false;
+	        })
+	        window.addEventListener('touchstart', function (e) {
+	            myGameArea.touchStartX = e.pageX;
+	            myGameArea.touchStartY = e.pageY;
+	        })
+	        window.addEventListener('touchend', function (e) {
+	            myGameArea.touchEndX = false;
+	            myGameArea.touchEndY = false;
+	        })
+		},
+		clear : function() {
+			this.context.clearRect(0,0, this.canvas.width, this.canvas.height);
+		}
+	}
+
+	function Cell(x, y, width, height, color) {
+		this.width = width;
+		this.height = height;
+		this.x = x;
+		this.y = y;
+		this.alive = false;
+		this.numNeighbours = 0;
+
+		this.update = function() {
+			ctx = myGameArea.context;
+			if(this.alive) {
+				ctx.fillStyle = "white";
+				ctx.fillRect(this.x, this.y, this.width, this.height);
+				ctx.fillStyle = color;
+				ctx.fillRect(this.x + 1, this.y + 1, this.width - 2, this.height - 2);
+			} else {
+				ctx.fillStyle = color;
+				ctx.fillRect(this.x, this.y, this.width, this.height);
+				ctx.fillStyle = "white";
+				ctx.fillRect(this.x + 1, this.y + 1, this.width - 2, this.height - 2);
+			}
+		}
+
+		this.randomLife = function() {
+			this.alive = Math.random()<.5;
+		}
+
+		this.clicked = function() {
+			if(this.y + this.height < myGameArea.mouseDownY || this.y > myGameArea.mouseDownY
+    			|| this.x + this.width < myGameArea.mouseDownX || this.x > myGameArea.mouseDownX) {
+    			return false;
+    		}
+
+    		return true;
+		}
+	}
+
+	function random() {
+		for(var i = 0; i < cells.length; i++) {
+			cells[i].randomLife();
+		}
+	}
+
+	function component(width, height, color, x, y) {
+	    this.width = width;
+	    this.height = height;
+	    this.x = x;
+	    this.y = y; 
+
+	    this.update = function() {
+		    ctx = myGameArea.context;
+		    ctx.fillStyle = color;
+		    ctx.fillRect(this.x, this.y, this.width, this.height);
+	    }
+	}
+
+	function updateGameArea() {
+		myGameArea.clear();
+		
+		if(running) {
+			if(generationTimer == 0) {
+				calculateNumNeighbours();
+				generateLife();
+			}
+
+			generationTimer++;
+			if(generationTimer >= generationLength) { generationTimer = 0; }
+		}
+
+		for(var i = 0; i < cells.length; i++) {
+			cells[i].update();
+		}
+		
+		updateMouseCursor();
+	}
+
+	function generateLife() {
+		for(var i = 0; i < cells.length; i++) {
+			if(cells[i].alive) {
+				if(cells[i].numNeighbours == 2 || cells[i].numNeighbours == 3) { //Any live cell with two or three live neighbours lives on to the next generation.
+					cells[i].alive = true;
+				} else {
+					cells[i].alive = false;
+				}
+			} else { // Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
+				cells[i].alive = (cells[i].numNeighbours == 3);
+			}
+		}
+	}
+
+	function calculateNumNeighbours() {
+		// cells are generated columns first, so scan down.
+		for (var i = 0; i < cells.length; i++) {
+			var numNeighbours = 0;
+			var isTopRow = (i % cellsHeight == 0);
+			var isBottomRow = (i % cellsHeight == cellsHeight - 1);
+
+			//above
+			if(i > 0 && !isTopRow) {
+				if(cells[i-1].alive) numNeighbours++;
+			}
+
+			//below
+			if(i < cells.length - 1 && !isBottomRow) {
+				if(cells[i+1].alive) numNeighbours++;
+			}
+
+			//left
+			if(i - cellsHeight > 0) {
+				if(cells[i - cellsHeight].alive) numNeighbours++;
+			}
+
+			//right
+			if(i + cellsHeight < cells.length - 1) {
+				if(cells[i + cellsHeight].alive) numNeighbours++;
+			}
+
+			// above-left
+			if(i - cellsHeight - 1 > 0 && !isTopRow) { 
+				if(cells[i - cellsHeight - 1].alive) numNeighbours++;
+			}
+
+			// below-left
+			if(i - cellsHeight + 1 > 0 && !isBottomRow) { 
+				if(cells[i - cellsHeight + 1].alive) numNeighbours++;
+			}
+
+			// above-right
+			if(i + cellsHeight - 1 < cells.length - 1 && !isTopRow) {
+				if(cells[i + cellsHeight - 1].alive) numNeighbours++;
+			}
+
+			// below-right
+			if(i + cellsHeight + 1 < cells.length - 1 && !isBottomRow) {
+				if(cells[i + cellsHeight + 1].alive) numNeighbours++;
+			}
+
+			cells[i].numNeighbours = numNeighbours;
+		}
+	}
+
+	function cellClick() {
+		for(var i = 0; i < cells.length; i++) {
+			if(cells[i].clicked()) {
+				cells[i].alive = !cells[i].alive;
+			}
+		}
+	}
+
+	function updateMouseCursor() {
+		if(myGameArea.mousePosX && myGameArea.mousePosY) {
+			mouseCursor.x = myGameArea.mousePosX;
+			mouseCursor.y = myGameArea.mousePosY;
+		} else if(myGameArea.touchPosX && myGameArea.touchPosY) {
+			mouseCursor.x = myGameArea.touchPosX;
+			mouseCursor.y = myGameArea.touchPosY;
+		}
+
+		mouseCursor.update();
+	}
+
+	function updateKeyCursor() {
+	    if (myGameArea.keys && myGameArea.keys[37]) {keyCursor.x -= 1; }
+	    if (myGameArea.keys && myGameArea.keys[39]) {keyCursor.x += 1; }
+	    if (myGameArea.keys && myGameArea.keys[38]) {keyCursor.y -= 1; }
+	    if (myGameArea.keys && myGameArea.keys[40]) {keyCursor.y += 1; }
+
+	    keyCursor.update();
+	}
+
+	function stop() {
+		running = false;
+	}
+
+	function start() {
+		running = true;
+	}
+
+</script>
+
+<br />
+<button onmousedown="start()" ontouchstart="start()">Start</button>
+<button onmousedown="stop()" ontouchstart="stop()">Stop</button>
+<button onmousedown="random()" ontouchstart="random()">Randomise</button>
+
+</body>
+</html>
